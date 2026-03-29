@@ -1,0 +1,72 @@
+######################################
+# Mission-APP (Java / Maven)
+######################################
+Mission/HELP.md
+Mission/target/
+Mission/!.mvn/wrapper/maven-wrapper.jar
+Mission/**/src/main/**/target/
+Mission/**/src/test/**/target/
+
+### STS ###
+Mission/.apt_generated
+Mission/.classpath
+Mission/.factorypath
+Mission/.project
+Mission/.settings
+Mission/.springBeans
+Mission/.sts4-cache
+
+### IntelliJ ###
+Mission-APP/.idea
+Mission/*.iws
+Mission/*.iml
+Mission/*.ipr
+
+### NetBeans ###
+Mission/nbproject/private/
+Mission/nbbuild/
+Mission/dist/
+Mission/nbdist/
+Mission/.nb-gradle/
+Mission/build/
+
+### VS Code ###
+Mission/.vscode/
+
+######################################
+# Terraform
+######################################
+Terraform/.terraform/
+Terraform/*.tfstate
+Terraform/*.tfstate.*
+Terraform/crash.log
+Terraform/.terraform.lock.hcl
+
+# Terraform secrets
+Terraform/*.tfvars
+Terraform/*.tfvars.json
+
+######################################
+# Ansible
+######################################
+Ansible/*.retry
+Ansible/*.log
+
+# Ansible secrets
+Ansible/vault.yml
+Ansible/*.vault
+
+# Optional (if contains secrets)
+Ansible/inventory.ini
+
+######################################
+# Global sensitive files
+######################################
+*.pem
+*.key
+
+######################################
+# OS junk
+######################################
+.DS_Store
+Thumbs.db

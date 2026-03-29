@@ -1,0 +1,124 @@
+# ------------------------
+# Install Dependencies
+# ------------------------
+
+- name: Install dependencies
+  apt:
+    name:
+      - openjdk-17-jdk
+      - unzip
+      - wget
+      - postgresql
+      - postgresql-contrib
+    state: present
+    update_cache: yes
+
+# ------------------------
+# PostgreSQL Setup
+# ------------------------
+
+- name: Start PostgreSQL
+  service:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Create sonar user (Postgres)
+  shell: |
+    sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='sonar'" | grep -q 1 || \
+    sudo -u postgres psql -c "CREATE USER sonar WITH ENCRYPTED PASSWORD 'sonar';"
+
+- name: Create sonar database
+  shell: |
+    sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='sonarqube'" | grep -q 1 || \
+    sudo -u postgres psql -c "CREATE DATABASE sonarqube OWNER sonar;"
+
+- name: Grant full DB access
+  shell: |
+    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE sonarqube TO sonar;"
+
+- name: Fix schema permissions (CRITICAL)
+  shell: |
+    sudo -u postgres psql -d sonarqube -c "GRANT ALL ON SCHEMA public TO sonar;"
+    sudo -u postgres psql -d sonarqube -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO sonar;"
+    sudo -u postgres psql -d sonarqube -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO sonar;"
+
+# ------------------------
+# Sonar Config
+# ------------------------
+# ------------------------
+# Download & Extract SonarQube
+# ------------------------
+
+- name: Download SonarQube
+  get_url:
+    url: https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-9.9.0.65466.zip
+    dest: /opt/sonarqube.zip
+
+- name: Extract SonarQube
+  unarchive:
+    src: /opt/sonarqube.zip
+    dest: /opt/
+    remote_src: yes
+
+# ------------------------
+# Configure SonarQube (NOW FILE EXISTS)
+# ------------------------
+
+- name: Configure SonarQube DB
+  lineinfile:
+    path: /opt/sonarqube-9.9.0.65466/conf/sonar.properties
+    line: "{{ item }}"
+  loop:
+    - "sonar.jdbc.username=sonar"
+    - "sonar.jdbc.password=sonar"
+    - "sonar.jdbc.url=jdbc:postgresql://localhost/sonarqube"
+
+# ------------------------
+# System tuning
+# ------------------------
+
+- name: Set vm.max_map_count
+  sysctl:
+    name: vm.max_map_count
+    value: 262144
+    state: present
+    reload: yes
+
+# ------------------------
+# Run Sonar as proper user
+# ------------------------
+
+- name: Create sonar system user
+  user:
+    name: sonar
+    shell: /bin/bash
+
+- name: Set ownership of Sonar directory
+  file:
+    path: /opt/sonarqube-9.9.0.65466
+    owner: sonar
+    group: sonar
+    recurse: yes
+
+- name: Check if SonarQube is running
+  shell: pgrep -f sonar
+  register: sonar_status
+  ignore_errors: true
+
+- name: Start SonarQube (NON-ROOT)
+  shell: sudo -u sonar /opt/sonarqube-9.9.0.65466/bin/linux-x86-64/sonar.sh start
+  register: sonar_start
+  retries: 3
+  delay: 10
+  until: sonar_start.rc == 0 or "Started" in sonar_start.stdout
+  failed_when: false
+
+- name: Wait for SonarQube to be up
+  uri:
+    url: http://localhost:9000
+    status_code: 200
+  register: result
+  retries: 10
+  delay: 10
+  until: result.status == 200

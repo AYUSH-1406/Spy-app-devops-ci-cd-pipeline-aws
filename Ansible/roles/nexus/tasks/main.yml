@@ -1,0 +1,197 @@
+---
+# ── Prerequisites ──────────────────────────────────────────────────────────────
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install required packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - tar
+    state: present
+
+# ── Java ───────────────────────────────────────────────────────────────────────
+
+- name: Check if Java is already installed
+  ansible.builtin.command: java -version
+  register: java_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Install OpenJDK 17
+  ansible.builtin.apt:
+    name: openjdk-17-jdk
+    state: present
+    update_cache: true
+  when: java_check.rc != 0
+
+- name: Set Java 17 as default (update-alternatives)
+  ansible.builtin.command:
+    cmd: update-java-alternatives --set java-1.17.0-openjdk-amd64
+  when: java_check.rc != 0
+  ignore_errors: true
+
+- name: Verify Java installation
+  ansible.builtin.command: java -version
+  register: java_version
+  changed_when: false
+
+- name: Print Java version
+  ansible.builtin.debug:
+    msg: "Java version: {{ java_version.stderr }}"
+
+# ── User & group ───────────────────────────────────────────────────────────────
+
+- name: Create nexus group
+  ansible.builtin.group:
+    name: nexus
+    system: true
+    state: present
+
+- name: Create nexus user
+  ansible.builtin.user:
+    name: nexus
+    group: nexus
+    home: /opt
+    shell: /bin/bash
+    system: true
+    create_home: false
+    state: present
+
+# ── Download & extract ─────────────────────────────────────────────────────────
+
+- name: Check if Nexus is already downloaded
+  ansible.builtin.stat:
+    path: /opt/nexus-3.90.2-06
+  register: nexus_dir
+
+- name: Download Nexus tarball
+  ansible.builtin.get_url:
+    url: "https://download.sonatype.com/nexus/3/nexus-3.90.2-06-linux-x86_64.tar.gz"
+    dest: "/tmp/nexus-3.90.2-06-linux-x86_64.tar.gz"
+    mode: "0644"
+  when: not nexus_dir.stat.exists
+
+- name: Extract Nexus tarball
+  ansible.builtin.unarchive:
+    src: "/tmp/nexus-3.90.2-06-linux-x86_64.tar.gz"
+    dest: /opt
+    remote_src: true
+    creates: /opt/nexus-3.90.2-06
+  when: not nexus_dir.stat.exists
+
+- name: Remove downloaded tarball
+  ansible.builtin.file:
+    path: "/tmp/nexus-3.90.2-06-linux-x86_64.tar.gz"
+    state: absent
+
+# ── Symlink ────────────────────────────────────────────────────────────────────
+
+- name: Create /opt/nexus symlink
+  ansible.builtin.file:
+    src: /opt/nexus-3.90.2-06
+    dest: /opt/nexus
+    state: link
+    owner: nexus
+    group: nexus
+
+# ── Ownership ──────────────────────────────────────────────────────────────────
+
+- name: Set ownership on nexus install directory
+  ansible.builtin.file:
+    path: /opt/nexus-3.90.2-06
+    owner: nexus
+    group: nexus
+    recurse: true
+
+- name: Set ownership on sonatype-work directory
+  ansible.builtin.file:
+    path: /opt/sonatype-work
+    owner: nexus
+    group: nexus
+    recurse: true
+    state: directory
+
+# ── Configuration ──────────────────────────────────────────────────────────────
+
+- name: Configure nexus run-as user
+  ansible.builtin.lineinfile:
+    path: /opt/nexus-3.90.2-06/bin/nexus.rc
+    regexp: '^#?run_as_user='
+    line: 'run_as_user="nexus"'
+    create: true
+    owner: nexus
+    group: nexus
+    mode: "0644"
+
+- name: Set Nexus application port
+  ansible.builtin.lineinfile:
+    path: /opt/nexus-3.90.2-06/etc/nexus-default.properties
+    regexp: '^application-port='
+    line: "application-port=8081"
+
+# ── systemd service ────────────────────────────────────────────────────────────
+
+- name: Create systemd service unit for Nexus
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/nexus.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Sonatype Nexus Repository Manager
+      After=network.target
+
+      [Service]
+      Type=forking
+      LimitNOFILE=65536
+      User=nexus
+      Group=nexus
+      ExecStart=/opt/nexus/bin/nexus start
+      ExecStop=/opt/nexus/bin/nexus stop
+      Restart=on-failure
+      RestartSec=10
+      TimeoutStartSec=180
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable and start Nexus service
+  ansible.builtin.systemd:
+    name: nexus
+    enabled: true
+    state: started
+
+# ── Firewall (UFW) ─────────────────────────────────────────────────────────────
+
+- name: Allow Nexus port through UFW (if UFW is active)
+  community.general.ufw:
+    rule: allow
+    port: "8081"
+    proto: tcp
+  ignore_errors: true
+
+# ── Verification ───────────────────────────────────────────────────────────────
+
+- name: Wait for Nexus HTTP endpoint to become available
+  ansible.builtin.uri:
+    url: "http://localhost:8081"
+    method: GET
+    status_code: [200, 302, 403]
+  register: nexus_status
+  retries: 30
+  delay: 10
+  until: nexus_status.status in [200, 302, 403]
+
+- name: Print Nexus access info
+  ansible.builtin.debug:
+    msg:
+      - "Nexus is running on port 8081"
+      - "Access it at: http://{{ ansible_host }}:8081"
+      - "Default credentials: admin / (see /opt/sonatype-work/nexus3/admin.password)"
