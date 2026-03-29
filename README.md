@@ -176,5 +176,15 @@ If you found this useful, feel free to connect!
 # ⭐ If you like this project, give it a star!
 
 ---
+Monitoring And Alerts:
+
+<img width="1919" height="701" alt="Screenshot 2026-03-29 214753" src="https://github.com/user-attachments/assets/e0811579-f0af-476c-be06-d77e6cf95d18" />
+<img width="1919" height="848" alt="Screenshot 2026-03-29 215456" src="https://github.com/user-attachments/assets/6a23095f-5b4c-4db2-ba29-e3e7f53948f5" />
+<img width="1919" height="616" alt="Screenshot 2026-03-29 214810" src="https://github.com/user-attachments/assets/6f5b6c4f-20ca-4ed3-bfcd-300ddd333d8b" />
+<img width="1919" height="721" alt="Screenshot 2026-03-29 215528" src="https://github.com/user-attachments/assets/f22ee361-a07c-42a9-989d-870f2b3bc9e5" />
+
+
+
+
 
 
